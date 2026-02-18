@@ -44,6 +44,8 @@ export default function ChatPage() {
     newSocket.on('connect', () => {
       setIsConnected(true)
       console.log('Connected to WS')
+      // load previous messages
+      newSocket.emit('load-messages')
     })
 
     newSocket.on('disconnect', () => {
@@ -52,6 +54,10 @@ export default function ChatPage() {
 
     newSocket.on('public-message', (msg) => {
       setMessages((prev) => [...prev, msg])
+    })
+
+    newSocket.on('load-messages', (msgs) => {
+      setMessages(msgs)
     })
 
     setSocket(newSocket)
@@ -96,6 +102,18 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
+        {/* Logout Button */}
+        <button
+          onClick={() => {
+            socket?.disconnect()
+            localStorage.removeItem('token')
+            window.location.href = '/login'
+            socket?.disconnect();
+          }}
+          className="rounded-md bg-red-500 px-4 py-2 text-sm text-white hover:bg-red-600"
+        >
+          Log out
+        </button>
       </header>
 
       {/* --- Message List --- */}
