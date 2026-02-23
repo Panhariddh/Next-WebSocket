@@ -44,49 +44,48 @@ const formatTime = (timestamp: string | number) => {
 // ─────────────────────────────────────────────────────────────
 // Message Bubble Component
 // ─────────────────────────────────────────────────────────────
-const MessageBubble = ({ 
-  message, 
-  isMine, 
-  showSender 
-}: { 
-  message: any; 
-  isMine: boolean; 
-  showSender?: boolean 
+const MessageBubble = ({
+  message,
+  isMine,
+  showSender
+}: {
+  message: any;
+  isMine: boolean;
+  showSender?: boolean
 }) => {
   return (
     <div className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'} group`}>
-      
+
       {/* Avatar - only show for received messages */}
       {!isMine && <UserIcon name={message.from} isOnline={true} />}
-      
+
       <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[75%]`}>
-        
+
         {/* Sender name for private messages */}
         {showSender && !isMine && (
           <span className="text-xs font-medium text-gray-500 ml-1 mb-0.5">
             {message.from}
           </span>
         )}
-        
+
         {/* Bubble */}
         <div
           className={`relative px-4 py-2.5 rounded-2xl shadow-sm transition-all duration-150
-            ${isMine 
-              ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-br-md' 
+            ${isMine
+              ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-br-md'
               : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md hover:shadow-md'
             }`}
         >
           <p className="text-sm leading-relaxed break-words">{message.message}</p>
-          
+
           {/* Time */}
-          <span className={`text-[10px] block mt-1 text-right ${
-            isMine ? 'text-blue-100' : 'text-gray-400'
-          }`}>
+          <span className={`text-[10px] block mt-1 text-right ${isMine ? 'text-blue-100' : 'text-gray-400'
+            }`}>
             {formatTime(message.time)}
           </span>
         </div>
       </div>
-      
+
       {/* Spacer for alignment */}
       {isMine && <div className="w-8" />}
     </div>
@@ -121,64 +120,85 @@ export default function ChatPage() {
 
   // ───────── Socket Setup ─────────
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    let currentSocket: Socket | null = null
 
-    if (!token) {
-      window.location.href = '/login'
-      return
+    const connectSocket = () => {
+      const token = localStorage.getItem('token')
+
+      if (!token) {
+        window.location.href = '/login'
+        return
+      }
+
+      // disconnect old socket first
+      if (currentSocket) {
+        currentSocket.disconnect()
+      }
+
+      const newSocket = io(process.env.NEXT_PUBLIC_API_URL!, {
+        auth: { token },
+      })
+
+      currentSocket = newSocket
+      setSocket(newSocket)
+
+      newSocket.on('connect', () => {
+        setIsConnected(true)
+        setIsLoading(false)
+        newSocket.emit('load-messages')
+      })
+
+      newSocket.on('disconnect', () => {
+        setIsConnected(false)
+        setIsLoading(true)
+      })
+
+      newSocket.on('public-message', msg =>
+        setMessages(prev => [...prev, msg])
+      )
+
+      newSocket.on('private-message', msg =>
+        setMessages(prev => [...prev, msg])
+      )
+
+      newSocket.on('load-messages', msgs => {
+        setMessages(msgs)
+        setIsLoading(false)
+      })
+
+      newSocket.on('private-history', msgs => {
+        setMessages(msgs)
+        setIsLoading(false)
+      })
+
+      newSocket.on('online-users', users =>
+        setOnlineUsers(users)
+      )
+
+      newSocket.on('me', user => {
+        setMyName(user.name)
+        setMyId(user.id)
+      })
+
+      newSocket.on('typing', name => {
+        console.log(name + ' is typing...')
+      })
     }
 
-    const newSocket = io(process.env.NEXT_PUBLIC_API_URL!, {
-      auth: { token },
-    })
+    // 🔥 initial connect
+    connectSocket()
 
-    newSocket.on('connect', () => {
-      setIsConnected(true)
-      setIsLoading(false)
-      newSocket.emit('load-messages')
-    })
+    // 🔥 listen for token refresh
+    const handleRefresh = () => {
+      console.log('🔄 Token refreshed, reconnecting socket...')
+      connectSocket()
+    }
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false)
-      setIsLoading(true)
-    })
-
-    newSocket.on('public-message', msg =>
-      setMessages(prev => [...prev, msg])
-    )
-
-    newSocket.on('private-message', msg =>
-      setMessages(prev => [...prev, msg])
-    )
-
-    newSocket.on('load-messages', msgs => {
-      setMessages(msgs)
-      setIsLoading(false)
-    })
-
-    newSocket.on('private-history', msgs => {
-      setMessages(msgs)
-      setIsLoading(false)
-    })
-
-    newSocket.on('online-users', users =>
-      setOnlineUsers(users)
-    )
-
-    newSocket.on('me', user => {
-      setMyName(user.name);
-      setMyId(user.id);
-    });
-
-
-    newSocket.on('typing', name => {
-      console.log(name + ' is typing...');
-    });
-
-    setSocket(newSocket)
+    window.addEventListener('tokenRefreshed', handleRefresh)
 
     return () => {
-      newSocket.disconnect()
+      window.removeEventListener('tokenRefreshed', handleRefresh)
+      currentSocket?.disconnect()
     }
   }, [])
 
@@ -224,7 +244,7 @@ export default function ChatPage() {
 
       {/* ================= SIDEBAR ================= */}
       <aside className="w-72 bg-white border-r border-gray-200 flex flex-col shadow-sm">
-        
+
         {/* Header */}
         <div className="p-4 border-b border-gray-100">
           <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -243,8 +263,8 @@ export default function ChatPage() {
             socket?.emit('load-messages')
           }}
           className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl transition-all duration-200
-            ${selectedUser === null 
-              ? 'bg-blue-50 border border-blue-200 text-blue-700' 
+            ${selectedUser === null
+              ? 'bg-blue-50 border border-blue-200 text-blue-700'
               : 'hover:bg-gray-50 text-gray-700'
             }`}
         >
@@ -263,7 +283,7 @@ export default function ChatPage() {
           <p className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Direct Messages
           </p>
-          
+
           {onlineUsers.length === 0 ? (
             <p className="px-3 py-4 text-sm text-gray-400 text-center">
               No users online
@@ -277,16 +297,15 @@ export default function ChatPage() {
                   socket?.emit('load-private-messages', user.id)
                 }}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200
-                  ${selectedUser === user.id 
-                    ? 'bg-blue-50 border border-blue-200' 
+                  ${selectedUser === user.id
+                    ? 'bg-blue-50 border border-blue-200'
                     : 'hover:bg-gray-50'
                   }`}
               >
                 <UserIcon name={user.name} isOnline={true} />
                 <div className="text-left flex-1 min-w-0">
-                  <p className={`font-medium text-sm truncate ${
-                    selectedUser === user.id ? 'text-blue-700' : 'text-gray-800'
-                  }`}>
+                  <p className={`font-medium text-sm truncate ${selectedUser === user.id ? 'text-blue-700' : 'text-gray-800'
+                    }`}>
                     {user.name}
                   </p>
                   <p className="text-xs text-gray-500">
@@ -304,14 +323,15 @@ export default function ChatPage() {
             onClick={() => {
               socket?.disconnect()
               localStorage.removeItem('token')
+              localStorage.removeItem('refresh_token')
               window.location.href = '/login'
             }}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 
                       text-red-600 hover:bg-red-50 rounded-xl transition-colors text-sm font-medium"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             Logout
           </button>
@@ -326,9 +346,9 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             {selectedUser ? (
               <>
-                <UserIcon 
-                  name={getChatTitle()} 
-                  isOnline={onlineUsers.some((u: any) => u.id === selectedUser)} 
+                <UserIcon
+                  name={getChatTitle()}
+                  isOnline={onlineUsers.some((u: any) => u.id === selectedUser)}
                 />
                 <div>
                   <h2 className="font-semibold text-gray-800">{getChatTitle()}</h2>
@@ -355,7 +375,7 @@ export default function ChatPage() {
 
         {/* Messages Area */}
         <section className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gradient-to-b from-gray-50/50 to-transparent">
-          
+
           {/* Loading State */}
           {isLoading && (
             <div className="flex justify-center py-8">
@@ -382,17 +402,17 @@ export default function ChatPage() {
           {messages.map((m, i) => {
             const isMine = m.senderId === myId;
             const showSender = !isMine && selectedUser === null // Show sender name in public chat
-            
+
             return (
-              <MessageBubble 
+              <MessageBubble
                 key={`${m.id}-${i}`}
-                message={m} 
-                isMine={isMine} 
+                message={m}
+                isMine={isMine}
                 showSender={showSender}
               />
             )
           })}
-          
+
           <div ref={messagesEndRef} />
         </section>
 
@@ -441,7 +461,7 @@ export default function ChatPage() {
               <SendIcon />
             </button>
           </div>
-          
+
           {/* Helper text */}
           <p className="text-center text-[10px] text-gray-400 mt-2">
             Press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">Enter</kbd> to send

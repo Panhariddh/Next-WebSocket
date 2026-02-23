@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 import { useRouter } from 'next/navigation'
+import api from '@/lib/axios'
 
 export default function Page() {
   const [email, setEmail] = useState('')
@@ -17,12 +18,13 @@ export default function Page() {
     setStatus(null)
 
     try {
-      const res = await axios.post(
+      const res = await api.post(
         process.env.NEXT_PUBLIC_API_URL + '/auth/login', 
         { email, password }
       )
 
-      localStorage.setItem('token', res.data.access_token)
+      localStorage.setItem('token', res.data.access_token) 
+      localStorage.setItem('refresh_token', res.data.refresh_token)
       
       setStatus({ type: 'success', message: 'Login successful! Redirecting...' })
       
